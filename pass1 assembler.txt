@@ -1,0 +1,282 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define MAX_SYMBOLS 100
+#define MAX_LITERALS 100
+#define MAX_MNEMONICS 10
+#define MAX_PSEUDO_OPS 5
+#define MAX_LINE_LENGTH 100
+
+struct Symbol {
+char name[20];
+int address;
+};
+
+struct Literal {
+char value[20];
+int address;
+};
+
+struct Mnemonic {
+char mnemonic[10];
+int opcode;
+};
+
+struct PseudoOp {
+char mnemonic[10];
+int opcode;
+};
+
+const char *registers[] = {"AREG", "BREG", "CREG", "DREG"};
+
+struct Mnemonic MOT[MAX_MNEMONICS] = {
+{"MOVER", 1}, {"MOVEM", 2}, {"ADD", 3}, {"SUB", 4}, {"MULT", 5},
+{"DIV", 6}, {"BC", 7}, {"COMP", 8}, {"PRINT", 9}, {"READ", 10}
+};
+
+struct PseudoOp POT[MAX_PSEUDO_OPS] = {
+{"START", 1}, {"END", 2}, {"EQU", 3}, {"ORIGIN", 4}, {"LTORG", 5}
+};
+
+struct Symbol symbolTable[MAX_SYMBOLS];
+int symbolCount = 0;
+
+struct Literal literalTable[MAX_LITERALS];
+int literalCount = 0;
+
+int searchMOT(char *mnemonic) {
+for (int i = 0; i < MAX_MNEMONICS; i++) {
+    if (strcmp(MOT[i].mnemonic, mnemonic) == 0) {
+return MOT[i].opcode;
+}
+}
+return -1;
+}
+
+int searchPOT(char *mnemonic) {
+for (int i = 0; i < MAX_PSEUDO_OPS; i++) {
+if (strcmp(POT[i].mnemonic, mnemonic) == 0) {
+return POT[i].opcode;
+}
+}
+return -1;
+}
+
+int getRegisterOpcode(const char *reg) {
+if (strcmp(reg, "AREG") == 0) return 1;
+if (strcmp(reg, "BREG") == 0) return 2;
+if (strcmp(reg, "CREG") == 0) return 3;
+if (strcmp(reg, "DREG") == 0) return 4;
+return -1;
+}
+
+int getSymbolIndex(const char *symbol) {
+for (int i = 0; i < symbolCount; i++) {
+    if (strcmp(symbolTable[i].name, symbol) == 0) {
+return i;
+}
+}
+return -1;
+}
+
+int getLiteralIndex(const char *literal) {
+for (int i = 0; i < literalCount; i++) {
+if (strcmp(literalTable[i].value, literal) == 0) {
+return i;
+}
+}
+return -1;
+}
+
+void addSymbol(const char *symbol, int address) {
+if (getSymbolIndex(symbol) == -1) {
+if (symbolCount < MAX_SYMBOLS) {
+strcpy(symbolTable[symbolCount].name, symbol);
+symbolTable[symbolCount].address = address;
+symbolCount++;
+}
+}
+}
+void addLiteral(const char *literal, int address) {
+if (getLiteralIndex(literal) == -1) {
+if (literalCount < MAX_LITERALS) {
+strcpy(literalTable[literalCount].value, literal);
+literalTable[literalCount].address = address;
+literalCount++;
+}
+}
+}
+
+void writeSymbolTable(FILE *fp) {
+fprintf(fp, "Index\tSymbol\tAddress\n");
+for (int i = 0; i < symbolCount; i++) {
+fprintf(fp, "%d\t%s\t%d\n", i + 1, symbolTable[i].name, symbolTable[i].address);
+}
+}
+
+void writeLiteralTable(FILE *fp) {
+fprintf(fp, "Index\tLiteral\tAddress\n");
+for (int i = 0; i < literalCount; i++) {
+fprintf(fp, "%d\t%s\t%d\n", i + 1, literalTable[i].value, literalTable[i].address);
+}
+}
+
+void generateIntermediateCode(FILE *output, int currentAddress, const char *mnemonic, int
+opcode, const char *operand1, const char *operand2, int isPseudoOp, int isLabel, char
+label[]) {
+    if (isLabel) {
+addSymbol(label, currentAddress);
+}
+
+if (isPseudoOp) {
+fprintf(output, "(AD, %02d) ", opcode);
+if (strcmp(mnemonic, "START") == 0 || strcmp(mnemonic, "ORIGIN") == 0) {
+fprintf(output, "_ (C, %s)\n", operand1);
+} else {
+fprintf(output, "_\n");
+}
+} else {
+int regOpcode1 = getRegisterOpcode(operand1);
+int regOpcode2 = getRegisterOpcode(operand2);
+
+if (regOpcode1 != -1 && regOpcode2 != -1) {
+fprintf(output, "%03d) (IS, %02d) %02d %02d\n", currentAddress, opcode,
+regOpcode1, regOpcode2);
+} else if (regOpcode1 != -1) {
+fprintf(output, "%03d) (IS, %02d) %02d ", currentAddress, opcode, regOpcode1);
+
+if (operand2 && operand2[0] == '#') {
+int literalIndex = getLiteralIndex(operand2 + 1);
+if (literalIndex == -1) {
+addLiteral(operand2 + 1, -1);
+literalIndex = literalCount - 1;
+}
+
+fprintf(output, "(L, %02d)\n", literalIndex + 1);
+} else {
+int symbolIndex = getSymbolIndex(operand2);
+if (symbolIndex == -1) {
+addSymbol(operand2, -1);
+symbolIndex = symbolCount - 1;
+}
+fprintf(output, "(S, %02d)\n", symbolIndex + 1);
+}
+} else {
+fprintf(output, "%03d) (IS, %02d) ", currentAddress, opcode);
+if (operand1 && operand1[0] == '#') {
+int literalIndex = getLiteralIndex(operand1 + 1);
+if (literalIndex == -1) {
+addLiteral(operand1 + 1, -1);
+literalIndex = literalCount - 1;
+}
+fprintf(output, "(L, %02d)\n", literalIndex + 1);
+} else {
+int symbolIndex = getSymbolIndex(operand1);
+if (symbolIndex == -1) {
+addSymbol(operand1, -1);
+symbolIndex = symbolCount - 1;
+}
+fprintf(output, "(S, %02d)\n", symbolIndex + 1);
+}
+}
+}
+}
+
+void pass1(FILE *source, FILE *output) {
+char line[MAX_LINE_LENGTH];
+int currentAddress = 0;
+
+while (fgets(line, sizeof(line), source)) {
+char label[20] = "", mnemonic[20] = "", operand1[20] = "", operand2[20] = "";
+int opcode = 0, isLabel = 0;
+
+int fields = sscanf(line, "%s %s %s %s", label, mnemonic, operand1, operand2);
+
+if (searchMOT(label) != -1 || searchPOT(label) != -1) {
+strcpy(operand2, operand1);
+strcpy(operand1, mnemonic);
+strcpy(mnemonic, label);
+label[0] = '\0';
+}
+
+opcode = searchMOT(mnemonic);
+int isPseudoOp = 0;
+if (opcode == -1) {
+opcode = searchPOT(mnemonic);
+isPseudoOp = 1;
+}
+
+if (opcode == 1 && strcmp(mnemonic, "START") == 0) {
+currentAddress = atoi(operand1);
+fprintf(output, "(AD, 01) _ (C, %d)\n", currentAddress);
+continue;
+}
+
+if (opcode == 2 && strcmp(mnemonic, "END") == 0) {
+for (int i = 0; i < literalCount; i++) {
+literalTable[i].address = currentAddress;
+fprintf(output, "%03d) (AD, 02) _ (L, %02d)\n", currentAddress, i + 1);
+currentAddress++;
+}
+break;
+}
+
+if (label[0] != '\0') isLabel = 1;
+generateIntermediateCode(output, currentAddress, mnemonic, opcode, operand1,
+operand2, isPseudoOp, isLabel, label);
+currentAddress++;
+}
+}
+
+int main() {
+FILE *source = fopen("input.txt", "r");
+FILE *output = fopen("output.txt", "w");
+FILE *symFile = fopen("symbol_table.txt", "w");
+FILE *litFile = fopen("literal_table.txt", "w");
+
+if (!source || !output || !symFile || !litFile) {
+perror("File open error");
+return 1;
+}
+
+pass1(source, output);
+
+writeSymbolTable(symFile);
+writeLiteralTable(litFile);
+
+fclose(source);
+fclose(output);
+fclose(symFile);
+fclose(litFile);
+
+printf("Intermediate code written to output.txt\n");
+printf("Symbol Table written to symbol_table.txt\n");
+printf("Literal Table written to literal_table.txt\n");
+
+return 0;
+}
+
+
+// Input.txt:(Create file manually and give path FILE *source = fopen("path/input.txt", "r");)
+// START 100
+// LOOP MOVER AREG #5
+// ADD BREG AREG
+// END
+
+//expected output for given input
+// literal_table.txt:
+// Index	Literal	Address
+// 1	5	102
+
+// symbol_table.txt:
+// Index	Symbol	Address
+// 1	LOOP	100
+
+// output.txt:
+// (AD, 01) _ (C, 100)
+// 100) (IS, 01) 01 (L, 01)
+// 101) (IS, 03) 02 01
+// 102) (AD, 02) _ (L, 01)
+

@@ -1,0 +1,164 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_MACRO 10
+#define MAX_MDT 100
+#define MAX_ALA 10
+#define MAX_LINES 100
+#define MAX_LENGTH 100
+
+typedef struct {
+char name[20];
+int index;
+} MNTEntry;
+
+typedef struct {
+char opcode[20];
+char operand[50];
+} MDTEntry;
+
+typedef struct {
+char param[20];
+char index[5];
+} ALAEntry;
+
+MNTEntry mnt[MAX_MACRO];
+MDTEntry mdt[MAX_MDT];
+ALAEntry ala[MAX_ALA];
+
+int mntc = 0, mdtc = 0, alac = 0;
+
+void add_to_ala(char *param) {
+sprintf(ala[alac].index, "#%d", alac);
+strcpy(ala[alac].param, param[0] == '&' ? param + 1 : param); // Remove '&' before storing
+alac++;
+}
+
+void process_macro_definition(char lines[MAX_LINES][MAX_LENGTH], int start, int end)
+{
+char macro_name[20], params[50], param_list[50] = "";
+char *token;
+sscanf(lines[start], "MACRO %s %49[^\n]", macro_name, params);
+
+// Add to MNT
+strcpy(mnt[mntc].name, macro_name);
+mnt[mntc].index = mdtc;
+mntc++;
+
+// Process ALA
+alac = 0;
+token = strtok(params, ", ");
+while (token) {
+add_to_ala(token);
+strcat(param_list, token);
+token = strtok(NULL, ", ");
+if (token) strcat(param_list, ", ");
+}
+
+// Store macro header in MDT with all params
+strcpy(mdt[mdtc].opcode, macro_name);
+strcpy(mdt[mdtc].operand, param_list);
+mdtc++;
+
+// Process macro body
+for (int i = start + 1; i < end; i++) {
+char opcode[20], operand[50];
+sscanf(lines[i], "%s %[^\n]", opcode, operand);
+
+// Replace parameters with indexes
+char final_operand[50] = "";
+token = strtok(operand, ", ");
+while (token) {
+int found = 0;
+for (int j = 0; j < alac; j++) {
+if (strcmp(token, ala[j].param) == 0 || (token[0] == '&' && strcmp(token + 1,
+ala[j].param) == 0)) {
+strcat(final_operand, ala[j].index);
+found = 1;
+break;
+}
+}
+if (!found) strcat(final_operand, token);
+token = strtok(NULL, ", ");
+if (token) strcat(final_operand, ", ");
+}
+
+// Store in MDT
+strcpy(mdt[mdtc].opcode, opcode);
+strcpy(mdt[mdtc].operand, final_operand);
+mdtc++;
+}
+
+// Store MEND in MDT
+strcpy(mdt[mdtc].opcode, "MEND");
+strcpy(mdt[mdtc].operand, "");
+mdtc++;
+}
+
+void print_tables() {
+printf("\nMacro Name Table (MNT):\n");
+printf("--------------------------------\n");
+printf("Index Macro Name MDT Index\n");
+printf("--------------------------------\n");
+for (int i = 0; i < mntc; i++) {
+printf("%d %-10s %d\n", i, mnt[i].name, mnt[i].index);
+}
+printf("\n\nArgument List Array (ALA):\n");
+printf("----------------------------\n");
+printf("Index Parameter\n");
+printf("----------------------------\n");
+for (int i = 0; i < alac; i++) {
+printf("%-7s %s\n", ala[i].index, ala[i].param);
+}
+
+printf("\n\nMacro Definition Table (MDT):\n");
+printf("---------------------------------------\n");
+printf("Index Opcode Operands\n");
+printf("---------------------------------------\n");
+for (int i = 0; i < mdtc; i++) {
+printf("%-7d %-8s %s\n", i, mdt[i].opcode, mdt[i].operand);
+}
+}
+
+void print_intermediate_code(char lines[MAX_LINES][MAX_LENGTH], int total_lines, int
+macro_end) {
+printf("\n\nIntermediate Code (without macro definition):\n");
+printf("-----------------------------------------------\n");
+for (int i = macro_end + 1; i < total_lines; i++) {
+printf("%s\n", lines[i]);
+}
+}
+
+int main() {
+FILE *file = fopen("input.asm", "r");
+if (!file) {
+printf("Error opening file.\n");
+return 1;
+}
+char lines[MAX_LINES][MAX_LENGTH];
+int line_count = 0, macro_end = -1;
+
+while (fgets(lines[line_count], MAX_LENGTH, file) && line_count < MAX_LINES) {
+lines[line_count][strcspn(lines[line_count], "\n")] = 0;
+if (strstr(lines[line_count], "MEND")) {
+macro_end = line_count;
+}
+line_count++;
+}
+fclose(file);
+if (macro_end != -1) {
+process_macro_definition(lines, 0, macro_end);
+}
+print_tables();
+print_intermediate_code(lines, line_count, macro_end);
+return 0;
+}
+
+//input.asm
+// MACRO INCR &ARG1,&ARG2
+// ADD &ARG1, &ARG2
+// MEND
+// START
+// MOV A, B
+// INCR A, B
+// END

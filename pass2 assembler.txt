@@ -1,0 +1,136 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_SYMBOLS 100
+#define MAX_LITERALS 100
+
+struct Symbol {
+char name[20];
+int address;
+};
+
+struct Literal {
+char value[20];
+int address;
+};
+
+struct Symbol symbolTable[MAX_SYMBOLS];
+struct Literal literalTable[MAX_LITERALS];
+int symbolCount = 0, literalCount = 0;
+
+// Function to load Symbol Table from file
+void loadSymbolTable() {
+FILE *fp = fopen("symbol_table.txt", "r");
+if (!fp) {
+perror("Error opening symbol_table.txt");
+exit(1);
+}
+char line[100];
+fgets(line, sizeof(line), fp); // Skip header
+while (fgets(line, sizeof(line), fp)) {
+int index, address;
+char symbol[20];
+if (sscanf(line, "%d %s %d", &index, symbol, &address) == 3) {
+strcpy(symbolTable[symbolCount].name, symbol);
+symbolTable[symbolCount].address = address;
+symbolCount++;
+}
+}
+fclose(fp);
+}
+
+// Function to load Literal Table from file
+void loadLiteralTable() {
+FILE *fp = fopen("literal_table.txt", "r");
+if (!fp) {
+perror("Error opening literal_table.txt");
+exit(1);
+}
+char line[100];
+fgets(line, sizeof(line), fp); // Skip header
+while (fgets(line, sizeof(line), fp)) {
+int index, address;
+char literal[20];
+if (sscanf(line, "%d %s %d", &index, literal, &address) == 3) {
+strcpy(literalTable[literalCount].value, literal);
+literalTable[literalCount].address = address;
+
+literalCount++;
+}
+}
+fclose(fp);
+}
+
+int getLiteralAddress(int index) {
+if (index - 1 < literalCount)
+return literalTable[index - 1].address;
+return -1;
+}
+
+int getSymbolAddress(int index) {
+if (index - 1 < symbolCount)
+return symbolTable[index - 1].address;
+return -1;
+}
+
+void pass2() {
+FILE *input = fopen("output.txt", "r");
+FILE *output = fopen("target_code.txt", "w");
+
+if (!input || !output) {
+perror("Error opening files");
+exit(1);
+}
+char line[100];
+int lc = 0;
+
+while (fgets(line, sizeof(line), input)) {
+if (strstr(line, "(AD")) {
+continue; // Skip assembler directives in target code
+}
+
+if (strstr(line, "(IS")) {
+int opcode, reg, index, addr;
+if (strstr(line, "(L,")) {
+sscanf(line, "%d) (IS, %d) %d (L, %d)", &lc, &opcode, &reg, &index);
+addr = getLiteralAddress(index);
+} else if (strstr(line, "(S,")) {
+sscanf(line, "%d) (IS, %d) %d (S, %d)", &lc, &opcode, &reg, &index);
+addr = getSymbolAddress(index);
+} else {
+sscanf(line, "%d) (IS, %d) (S, %d)", &lc, &opcode, &index);
+reg = 0;
+addr = getSymbolAddress(index);
+}
+fprintf(output, "%03d) %02d %02d %03d\n", lc, opcode, reg, addr);
+}
+}
+
+
+fclose(input);
+fclose(output);
+printf("Target code generated successfully in 'target_code.txt'\n");
+}
+
+int main() {
+loadSymbolTable();
+loadLiteralTable();
+pass2();
+return 0;
+}
+//input files
+// literal_table.txt:
+// Index	Literal	Address
+// 1	5	102
+
+// symbol_table.txt:
+// Index	Symbol	Address
+// 1	LOOP	100
+
+// output.txt:(intermediate code generated in pass1)
+// (AD, 01) _ (C, 100)
+// 100) (IS, 01) 01 (L, 01)
+// 101) (IS, 03) 02 01
+// 102) (AD, 02) _ (L, 01)
+

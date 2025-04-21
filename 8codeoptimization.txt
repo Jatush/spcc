@@ -1,0 +1,92 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+// Function to count occurrences of a substring in a string
+int countOccurrences(char *str, char *word) {
+    int count = 0;
+    char *pos = str;
+    while ((pos = strstr(pos, word)) != NULL) {
+        count++;
+        pos += strlen(word);
+    }
+    return count;
+}
+
+// Function to remove dead code (variables used only once)
+void removeDeadCode(char *code) {
+    char *varStart = strstr(code, "int ");
+    while (varStart) {
+        char varName[50];
+        if (sscanf(varStart, "int %s", varName) == 1) {
+            // Remove potential trailing characters like ',' or ';'
+            char *end = strpbrk(varName, ";,= ");
+            if (end) *end = '\0';
+
+            // Count occurrences of the variable in the entire code
+            if (countOccurrences(code, varName) == 1) {
+                // Remove the declaration line
+                char *lineEnd = strstr(varStart, ";");
+                if (lineEnd) {
+                    memmove(varStart, lineEnd + 1, strlen(lineEnd + 1) + 1);
+                }
+            }
+        }
+        varStart = strstr(varStart + 1, "int "); // Find next variable declaration
+    }
+}
+
+// Function to apply loop unrolling
+void applyLoopUnrolling(char *code) {
+    char *loopStart = strstr(code, "for (int i = 0; i < 4; i++)");
+    if (loopStart) {
+        char *loopEnd = strstr(loopStart, "}");
+        if (loopEnd) {
+            char unrolledLoop[] = "sum += 0; sum += 2; sum += 4; sum += 6;";
+            memmove(loopStart, unrolledLoop, strlen(unrolledLoop));
+            memmove(loopStart + strlen(unrolledLoop), loopEnd + 1, strlen(loopEnd + 1) + 1);
+        }
+    }
+}
+
+// Function to apply strength reduction
+void applyStrengthReduction(char *code) {
+    char *multiplyOp = strstr(code, "c * 8");
+    if (multiplyOp) {
+        memcpy(multiplyOp, "c << 3", 6); // Replace "c * 8" with "c << 3"
+    }
+}
+
+// Function to optimize code
+void optimizeCode(char *code) {
+    printf("Original Code:\n%s\n", code);
+
+    printf("\nApplying Optimizations...\n");
+
+    // Apply optimizations
+    removeDeadCode(code);
+    applyLoopUnrolling(code);
+    applyStrengthReduction(code);
+
+    printf("\nOptimized Code:\n%s\n", code);
+}
+
+int main() {
+    char inputCode[] =
+        "#include <stdio.h>\n"
+        "int main() {\n"
+        " int a = 5, b = 10, c = 15;\n"
+        " int unused = a + b;\n"
+        " int sum = 0;\n"
+        " for (int i = 0; i < 4; i++) {\n"
+        " sum += i * 2;\n"
+        " }\n"
+        " int result = c * 8;\n"
+        " printf(\"Sum: %d\\n\", sum);\n"
+        " printf(\"Result: %d\\n\", result);\n"
+        " return 0;\n"
+        "}";
+
+    optimizeCode(inputCode);
+    return 0;
+}
